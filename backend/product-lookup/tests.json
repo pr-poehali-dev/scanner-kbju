@@ -1,0 +1,36 @@
+{
+  "tests": [
+    {
+      "name": "Поиск продукта по реальному штрихкоду (Coca-Cola)",
+      "method": "GET",
+      "path": "/?barcode=5449000000996",
+      "expectedStatus": 200,
+      "expectedBody": {"barcode": "string", "name": "string", "per100g": {}},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Ошибка — штрихкод не передан",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Продукт не найден",
+      "method": "GET",
+      "path": "/?barcode=0000000000000",
+      "expectedStatus": 404,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "OPTIONS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"status": "string"},
+      "bodyMatcher": "none"
+    }
+  ]
+}

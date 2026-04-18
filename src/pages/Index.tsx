@@ -1,7 +1,28 @@
 import { useState } from "react";
 import Icon from "@/components/ui/icon";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+
+const API_URL = "https://functions.poehali.dev/bca64adf-3767-4bed-9c3b-6f54006b4dbf";
+
+interface ProductData {
+  barcode: string;
+  name: string;
+  brand: string;
+  quantity: string;
+  category: string;
+  image: string;
+  nutriscore: string | null;
+  score: number;
+  per100g: {
+    calories: number;
+    protein: number;
+    fat: number;
+    carbs: number;
+    fiber: number;
+    sugar: number;
+    salt: number;
+  };
+}
 
 type Tab = "scanner" | "analysis" | "tips" | "saved" | "profile";
 
@@ -100,22 +121,57 @@ function NutrientBar({ label, value, max, color }: { label: string; value: numbe
   );
 }
 
-function ScannerTab() {
-  const [scanned, setScanned] = useState(false);
-  const [scanning, setScanning] = useState(false);
+async function fetchProduct(barcode: string): Promise<ProductData> {
+  const resp = await fetch(`${API_URL}?barcode=${encodeURIComponent(barcode)}`);
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || "Продукт не найден");
+  return data as ProductData;
+}
 
-  const handleScan = () => {
-    setScanning(true);
-    setTimeout(() => { setScanning(false); setScanned(true); }, 2500);
+function NutriscoreBadge({ grade }: { grade: string | null }) {
+  if (!grade) return null;
+  const colors: Record<string, string> = { A: "bg-green-500", B: "bg-lime-400", C: "bg-yellow-400", D: "bg-orange-400", E: "bg-red-500" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-white text-xs font-bold font-golos ${colors[grade] || "bg-gray-400"}`}>
+      Nutri-Score {grade}
+    </span>
+  );
+}
+
+function ScannerTab() {
+  const [product, setProduct] = useState<ProductData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [manualBarcode, setManualBarcode] = useState("");
+  const lookupBarcode = async (barcode: string) => {
+    if (!barcode.trim()) return;
+    setLoading(true);
+    setError(null);
+    setProduct(null);
+    try {
+      const data = await fetchProduct(barcode.trim());
+      setProduct(data);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Ошибка поиска");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoScan = () => {
+    // Demo штрихкоды реальных продуктов
+    const demos = ["5449000000996", "3017620422003", "5000112548167", "4006381333931"];
+    const pick = demos[Math.floor(Math.random() * demos.length)];
+    lookupBarcode(pick);
   };
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {!scanned ? (
+      {!product ? (
         <div className="space-y-5">
           <div className="text-center">
             <h2 className="text-2xl font-golos font-bold text-foreground">Сканер штрихкода</h2>
-            <p className="text-muted-foreground text-sm mt-1 font-ibm">Наведите камеру на упаковку продукта</p>
+            <p className="text-muted-foreground text-sm mt-1 font-ibm">Введите штрихкод с упаковки или нажмите «Демо»</p>
           </div>
 
           <div className="relative mx-auto w-full max-w-xs aspect-square rounded-3xl overflow-hidden bg-gray-900 flex items-center justify-center">
@@ -129,87 +185,131 @@ function ScannerTab() {
               ].map((cls, i) => (
                 <div key={i} className={`absolute w-8 h-8 border-[#0A6B4A] scanner-corner ${cls}`} />
               ))}
-              {scanning && (
+              {loading && (
                 <div className="absolute left-4 right-4 h-0.5 bg-[#0A6B4A] opacity-80 scan-line" style={{ boxShadow: "0 0 10px #0A6B4A" }} />
               )}
               <div className="text-center z-10">
-                {scanning ? (
+                {loading ? (
                   <div className="animate-pulse-slow">
                     <Icon name="ScanLine" size={40} className="text-[#0A6B4A] mx-auto" />
-                    <p className="text-white text-xs mt-2 font-ibm">Сканирование...</p>
+                    <p className="text-white text-xs mt-2 font-ibm">Ищу в базе данных...</p>
                   </div>
                 ) : (
                   <div>
                     <Icon name="Barcode" size={40} className="text-white/60 mx-auto" />
-                    <p className="text-white/60 text-xs mt-2 font-ibm">Штрихкод здесь</p>
+                    <p className="text-white/60 text-xs mt-2 font-ibm">Готов к сканированию</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
+              <Icon name="AlertCircle" size={18} className="text-red-500 flex-shrink-0" />
+              <p className="text-red-700 text-sm font-ibm">{error}</p>
+            </div>
+          )}
+
           <button
-            onClick={handleScan}
-            disabled={scanning}
+            onClick={handleDemoScan}
+            disabled={loading}
             className="w-full py-4 rounded-2xl font-golos font-semibold text-white text-base transition-all duration-200 hover:opacity-90 active:scale-95 disabled:opacity-70"
             style={{ background: "linear-gradient(135deg, #0A6B4A, #12875E)" }}
           >
-            {scanning ? "Сканирую..." : "Сканировать продукт"}
+            {loading ? "Загружаю данные..." : "Демо-сканирование"}
           </button>
 
           <div className="med-card p-4">
-            <p className="text-xs text-muted-foreground font-ibm text-center">Или введите штрихкод вручную</p>
+            <p className="text-xs text-muted-foreground font-ibm text-center">Введите штрихкод с упаковки</p>
             <div className="flex gap-2 mt-3">
               <input
+                value={manualBarcode}
+                onChange={(e) => setManualBarcode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && lookupBarcode(manualBarcode)}
                 className="flex-1 px-3 py-2 rounded-xl border border-border text-sm font-ibm bg-muted/30 focus:outline-none focus:ring-2 focus:ring-[#0A6B4A]/30"
-                placeholder="4607038321456"
+                placeholder="5449000000996"
+                disabled={loading}
               />
-              <button className="px-4 py-2 rounded-xl bg-[#0A6B4A] text-white text-sm font-ibm font-medium">Найти</button>
+              <button
+                onClick={() => lookupBarcode(manualBarcode)}
+                disabled={loading || !manualBarcode.trim()}
+                className="px-4 py-2 rounded-xl bg-[#0A6B4A] text-white text-sm font-ibm font-medium disabled:opacity-50"
+              >
+                Найти
+              </button>
             </div>
+            <p className="text-[10px] text-muted-foreground font-ibm mt-2 text-center">
+              База Open Food Facts — более 3 млн продуктов
+            </p>
           </div>
         </div>
       ) : (
         <div className="space-y-4 animate-fade-in">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-golos font-bold">Результат</h2>
-            <button onClick={() => setScanned(false)} className="text-sm text-[#0A6B4A] font-ibm font-medium">← Назад</button>
+            <button onClick={() => setProduct(null)} className="text-sm text-[#0A6B4A] font-ibm font-medium">← Назад</button>
           </div>
           <div className="med-card p-5 space-y-4">
             <div className="flex items-start gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
-                <span className="text-3xl">🥛</span>
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {product.image ? (
+                  <img src={product.image} alt={product.name} className="w-full h-full object-contain" />
+                ) : (
+                  <span className="text-3xl">🥫</span>
+                )}
               </div>
-              <div className="flex-1">
-                <h3 className="font-golos font-bold text-lg leading-tight">Кефир 2,5%</h3>
-                <p className="text-muted-foreground text-sm font-ibm">Простоквашино</p>
-                <div className="flex gap-2 mt-2">
-                  <Badge className="bg-emerald-50 text-[#0A6B4A] text-xs border-0">Молочные</Badge>
-                  <Badge className="bg-blue-50 text-blue-700 text-xs border-0">Пробиотики</Badge>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-golos font-bold text-base leading-tight">{product.name}</h3>
+                {product.brand && <p className="text-muted-foreground text-sm font-ibm">{product.brand}{product.quantity ? ` · ${product.quantity}` : ""}</p>}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge className="bg-emerald-50 text-[#0A6B4A] text-xs border-0">{product.category}</Badge>
+                  {product.nutriscore && <NutriscoreBadge grade={product.nutriscore} />}
                 </div>
               </div>
-              <ScoreRing score={84} />
+              <ScoreRing score={product.score} />
             </div>
             <div className="border-t border-border pt-4">
               <p className="text-xs font-ibm text-muted-foreground mb-3 uppercase tracking-wide">На 100 г продукта</p>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-4 gap-2">
                 {[
-                  { label: "Калории", value: "51", unit: "ккал", color: "text-amber-600" },
-                  { label: "Белки", value: "2,8", unit: "г", color: "text-blue-600" },
-                  { label: "Жиры", value: "2,5", unit: "г", color: "text-orange-500" },
-                  { label: "Углев.", value: "4,0", unit: "г", color: "text-purple-500" },
+                  { label: "Калории", value: product.per100g.calories, unit: "ккал", color: "text-amber-600" },
+                  { label: "Белки", value: product.per100g.protein, unit: "г", color: "text-blue-600" },
+                  { label: "Жиры", value: product.per100g.fat, unit: "г", color: "text-orange-500" },
+                  { label: "Углев.", value: product.per100g.carbs, unit: "г", color: "text-purple-500" },
                 ].map((n) => (
                   <div key={n.label} className="bg-muted/40 rounded-xl p-2 text-center">
-                    <p className={`text-lg font-golos font-bold ${n.color}`}>{n.value}</p>
+                    <p className={`text-base font-golos font-bold ${n.color}`}>{n.value}</p>
                     <p className="text-[10px] text-muted-foreground font-ibm">{n.unit}</p>
                     <p className="text-[10px] text-muted-foreground font-ibm">{n.label}</p>
                   </div>
                 ))}
               </div>
             </div>
+            {(product.per100g.fiber > 0 || product.per100g.sugar > 0 || product.per100g.salt > 0) && (
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                {[
+                  { label: "Клетчатка", value: product.per100g.fiber, color: "text-emerald-600" },
+                  { label: "Сахар", value: product.per100g.sugar, color: "text-pink-500" },
+                  { label: "Соль", value: product.per100g.salt, color: "text-gray-500" },
+                ].map((n) => (
+                  <div key={n.label} className="bg-muted/30 rounded-xl p-2 text-center">
+                    <p className={`text-sm font-golos font-semibold ${n.color}`}>{n.value} г</p>
+                    <p className="text-[10px] text-muted-foreground font-ibm">{n.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <button className="w-full py-3.5 rounded-2xl font-golos font-semibold text-white text-sm" style={{ background: "linear-gradient(135deg, #0A6B4A, #12875E)" }}>
             <Icon name="BookmarkPlus" size={16} className="inline mr-2" />
             Сохранить продукт
+          </button>
+          <button
+            onClick={() => { setProduct(null); setManualBarcode(""); }}
+            className="w-full py-3 rounded-2xl border-2 border-[#0A6B4A] text-[#0A6B4A] font-golos font-semibold text-sm hover:bg-emerald-50 transition-colors"
+          >
+            Сканировать ещё
           </button>
         </div>
       )}
